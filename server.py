@@ -1,30 +1,23 @@
 import socket
 
-
-def server_program():
+def Main():
+   
     host = '10.250.77.19' #Server ip
-    port = 6000  # initiate port no abo`ve 1024
+    port = 4000
 
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # get instance
-    # look closely. The bind() function takes tuple as argument
-    server_socket.bind((host, port))  # bind host address and port together
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind((host, port))
 
-    # configure how many client the server can listen simultaneously
-    server_socket.listen(2)
-    conn, address = server_socket.accept()  # accept new connection
-    print("Connection from: " + str(address))
+    print("Server Started")
     while True:
-        # receive data stream. it won't accept data packet greater than 1024 bytes
-        data = conn.recv(1024).decode()
-        if not data:
-            # if data is not received break
-            break
-        print("from connected user: " + str(data))
-        data = input(' -> ')
-        conn.send(data.encode())  # send data to the client
+        data, addr = s.recvfrom(1024)
+        data = data.decode('utf-8')
+        print("Message from: " + str(addr))
+        print("From connected user: " + data)
+        data = data.upper()
+        print("Sending: " + data)
+        s.sendto(data.encode('utf-8'), addr)
+    c.close()
 
-    conn.close()  # close the connection
-
-
-if __name__ == '__main__':
-    server_program()
+if __name__=='__main__':
+    Main()

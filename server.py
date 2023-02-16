@@ -1,95 +1,126 @@
 import socket
+from _thread import *
+import threading
 
-def start_server():
-    #starting the server
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(('10.250.170.49', 12345))
-    server_socket.listen(5)
-    print("Server started, waiting for clients")
+# keep track of which clients are connected
+client_connected = []
 
-    # keep track of which clients are connected
-    client_connected = []
+# create a dictionary called accounts to store all the accounts created by the client
+accounts = {}
+messages = {}
 
-    # create a dictionary called accounts to store all the accounts created by the client
-    accounts = {}
-    messages = {}
+p_lock = threading.Lock()
+
+def threaded(c):
 
     while True:
-        client_socket, client_address = server_socket.accept()
-        print(f"Connected to by: {client_address}")
-        client_socket.sendall(b"Welcome to the chat server!\n")
+        data_list=[]
+        # data received from client
+        data = c.recv(1024)
+        data_str = data.decode('UTF-8')
+        if not data:
+            print('Bye')
+            break
+        print(data_str+"\n")
+        #data_str = str(data)
+        data_list = data_str.split()
+        opcode = data_list[0]
+        #opcode = opcode_b[2:]
+        print("Opcode:" + str(opcode))
 
-        while True:
-            data = client_socket.recv(1024)
-            if not data:
-                break
+        if opcode == "create":
+            username = data_list[1]
+            if username in accounts:
+                c.send(f"Username '{username}' is already taken\n".encode())
+            else:
+                accounts[username] = []
+                c.send(f"Account '{username}' created\n".encode())
 
-            data = data.decode().strip()
-            call = data.split()
+            #list an account
+        elif opcode == "list":
+            c.send("\n".join(accounts.keys()).encode() + b"\n")
 
-            if len(call) == 0:
-                continue
-
-            #create an account
-            if call[0] == "create":
-                username = call[1]
-                if username in accounts:
-                    client_socket.sendall(f"Username '{username}' is already taken\n".encode())
-                else:
-                    accounts[username] = []
-                    client_socket.sendall(f"Account '{username}' created\n".encode())
-
-            #list an accoutn
-            elif call[0] == "list":
-                client_socket.sendall("\n".join(accounts.keys()).encode() + b"\n")
-
-            elif call[0] == "login":
-                username = call[1]
-                if username in accounts:
-                    client_connected.append(username)
-                    client_socket.sendall(f"Successfully logged in to account '{username}'\n".encode())
-                else:
-                    client_socket.sendall(f"Account '{username}' not found\n".encode())
+        elif opcode == "login":
+            username = data_list[1]
+            if username in accounts:
+                p_lock.acquire()
+                client_connected.append(username)
+                p_lock.release()
+                c.send(f"Successfully logged in to account '{username}'\n".encode())
+            else:
+                c.sendall(f"Account '{username}' not found\n".encode())
 
             # send message to recipient
-            elif call[0] == "send":
-                recipient = call[1]
-                if recipient in accounts:
-                    if recipient in client_connected:
-                        accounts[recipient].sendall("Message from {}: {}\n".format(call[2], " ".join(call[3:])).encode())
-                        client_socket.sendall(f"Message sent to {recipient}\n".encode())
+        elif opcode == "send":
+            recipient = data_list[1]
+            if recipient in accounts:
+                if recipient in client_connected:
+                    p_lock.acquire()
+                    accounts[recipient].append(c)
+                    recipient_conn = accounts[recipient][0]
+                    recipient_conn.sendall(f"Message from {data_list[2]}: {data_list[3]}\n".encode())
+                    p_lock.release()
+                    c.sendall(f"Message sent to {recipient}\n".encode())
+                else:
+                    if recipient in messages:
+                        messages[recipient].append(f"Message from {data_list[2]}: {data_list[3]}\n")
                     else:
-                        if recipient in messages:
-                            messages[recipient].append("Message from {}: {}\n".format(call[2], " ".join(call[3:])))
-                        else:
-                            messages[recipient] = ["Message from {}: {}\n".format(call[2], " ".join(call[3:]))]
-                        client_socket.sendall(f"Message sent to {recipient}\n".encode())
-                else:
-                    client_socket.sendall("Recipient not found\n".encode())
+                        messages[recipient] = [f"Message from {data_list[2]}: {data_list[3]}\n"]
+                    c.send(f"Message sent to {recipient}\n".encode())
+            else:
+                c.sendall("Recipient not found\n".encode())
 
-            # deliver undelivered messages to a user
-            elif call[0] == "deliver":
-                username = call[1]
-                if username in messages:
-                    client_socket.sendall("\n".join(messages[username]).encode() + b"\n")
-                    del messages[username]
-                else:
-                    client_socket.sendall("No undelivered messages\n".encode())
+            # deliver undel
+        elif opcode == "deliver":
+            username = data_list[1]
+            if username in messages:
+                c.send("\n".join(messages[username]).encode() + b"\n")
+                del messages[username]
+            else:
+                c.send("No undelivered messages\n".encode())
 
             # delete an account
-            elif call[0] == "delete":
-                username = call[1]
-                if username in accounts:
-                    if username in messages:
-                        client_socket.sendall(f"Cannot delete account {username}. It has undelivered messages.\n".encode())
-                    else:
-                        del accounts[username]
-                        client_socket.sendall(f"Account {username} deleted.\n".encode())
+        elif opcode == "delete":
+            username = data_list[1]
+            if username in accounts:
+                if username in messages:
+                    c.send(f"Cannot delete account {username}. It has undelivered messages.\n".encode())
                 else:
-                    client_socket.sendall(f"Account {username} not found.\n".encode())
+                    del accounts[username]
+                    c.send(f"Account {username} deleted.\n".encode())
+            else:
+                c.send(f"Account {username} not found.\n".encode())
 
-        client_socket.close()
-        print(f"Closed connection with {client_address}")
+    c.close()
 
-if __name__ == "__main__":
-    start_server()
+def Main():
+
+    host = "127.0.0.1"
+ 
+    # reserve a port on your computer
+    # in our case it is 12345 but it
+    # can be anything
+    port = 2048
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind((host, port))
+    print("socket binded to port", port)
+ 
+    # put the socket into listening mode
+    s.listen(5)
+    print("socket is listening")
+ 
+    # a forever loop until client wants to exit
+    while True:
+ 
+        # establish connection with client
+        c, addr = s.accept()      
+        print('Connected to :', addr[0], ':', addr[1])
+ 
+        # Start a new thread and return its identifier
+        start_new_thread(threaded, (c,))
+    
+    s.close()
+ 
+ 
+if __name__ == '__main__':
+    Main()

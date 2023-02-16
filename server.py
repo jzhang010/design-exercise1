@@ -51,25 +51,21 @@ def threaded(c):
                 c.sendall(f"Account '{username}' not found\n".encode())
 
             # send message to recipient
+            # send message to recipient
         elif opcode == "send":
             recipient = data_list[1]
             if recipient in accounts:
                 if recipient in client_connected:
-                    p_lock.acquire()
-                    accounts[recipient].append(c)
-                    recipient_conn = accounts[recipient][0]
-                    recipient_conn.sendall(f"Message from {data_list[2]}: {data_list[3]}\n".encode())
-                    p_lock.release()
+                    accounts[recipient].sendall("Message from {}: {}\n".format(data_list[2], " ".join(call[3:])).encode())
                     c.sendall(f"Message sent to {recipient}\n".encode())
                 else:
                     if recipient in messages:
-                        messages[recipient].append(f"Message from {data_list[2]}: {data_list[3]}\n")
+                        messages[recipient].append("Message from {}: {}\n".format(data_list[2], " ".join(call[3:])))
                     else:
-                        messages[recipient] = [f"Message from {data_list[2]}: {data_list[3]}\n"]
-                    c.send(f"Message sent to {recipient}\n".encode())
+                        messages[recipient] = ["Message from {}: {}\n".format(data_list[2], " ".join(call[3:]))]
+                    c.sendall(f"Message sent to {recipient}\n".encode())
             else:
                 c.sendall("Recipient not found\n".encode())
-
             # deliver undel
         elif opcode == "deliver":
             username = data_list[1]

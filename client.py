@@ -1,23 +1,22 @@
 import socket
 
-def Main():
+def start_client():
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.connect(('10.250.170.49', 12345))
+    print("Connected to server")
 
-    host= '10.250.170.49' #client ip
-    port = 12345
-    
-    server = ('10.250.77.19', 4000)
-    
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind((host,port))
-    
-    message = input("-> ")
-    while message !='q':
-        s.sendto(message.encode('utf-8'), server)
-        data, addr = s.recvfrom(1024)
-        data = data.decode('utf-8')
-        print("Received from server: " + data)
-        message = input("-> ")
-    s.close()
+    while True:
+        data = client_socket.recv(1024)
+        if not data:
+            break
 
-if __name__=='__main__':
-    Main()
+        print(data.decode(), end="")
+
+        command = input("> ").strip()
+        client_socket.sendall(command.encode() + b"\n")
+
+    client_socket.close()
+    print("Disconnected from server")
+
+if __name__ == "__main__":
+    start_client()
